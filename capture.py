@@ -129,7 +129,7 @@ class ViewModel:
         index_format = '{2:0' + str(self.record_id_num_pad) + '}'
         name_format = '{0}{1}' + index_format
         name = name_format.format(self.record_id_prefix, self.record_id_separator, self.current_sentence_index)
-        return name
+        return os.path.join(self.data_dir_structure,name)
 
 
 class AppFrame(wx.Frame):
@@ -231,6 +231,8 @@ class AppFrame(wx.Frame):
 
     def recButton(self, event):
         rec_filename = "{0}.wav".format(self.view_model.getRecordingFilename())
+        if os.path.exists(rec_filename):
+            os.remove(rec_filename)
         x = threading.Thread(target=self.sound_machine.record, args=(rec_filename, ))
         x.start()
 
