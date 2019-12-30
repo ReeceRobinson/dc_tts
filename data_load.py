@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #/usr/bin/python2
 '''
-By kyubyong park. kbpark.linguist@gmail.com. 
+By kyubyong park. kbpark.linguist@gmail.com.
 https://www.github.com/kyubyong/dc_tts
 '''
 
@@ -42,7 +42,7 @@ def load_data(mode="train"):
         if "LJ" in hp.data:
             # Parse
             fpaths, text_lengths, texts = [], [], []
-            transcript = os.path.join(hp.data, 'transcript.csv')
+            transcript = os.path.join(hp.data, 'metadata.csv')
             lines = codecs.open(transcript, 'r', 'utf-8').readlines()
             for line in lines:
                 fname, _, text = line.strip().split("|")
@@ -103,7 +103,8 @@ def get_batch():
 
         if hp.prepro:
             def _load_spectrograms(fpath):
-                fname = os.path.basename(fpath)
+
+                fname = bytes.decode(os.path.basename(fpath))
                 mel = "mels/{}".format(fname.replace("wav", "npy"))
                 mag = "mags/{}".format(fname.replace("wav", "npy"))
                 return fname, np.load(mel), np.load(mag)
