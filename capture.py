@@ -6,12 +6,14 @@ import pandas as pd
 import queue
 import sounddevice as sd
 import soundfile as sf
-import numpy
 
 
 class SoundMachine:
     q = queue.Queue()
     stop_recording = False
+    is_playing = False
+    is_recording = False
+    current_filename = ""
 
     # Configuration Item Candidates
     sample_rate = 22050
@@ -24,16 +26,26 @@ class SoundMachine:
         self.stop_recording = False
         sd.default.samplerate = self.sample_rate
 
+    def isReady(self):
+        return not self.is_playing and not self.is_recording
+
+    def isPlaying(self):
+        return self.is_playing
+
+    def isRecording(self):
+        return self.is_recording
+
     def record(self, filename):
 
         def callback(indata, frames, time, status):
             """This is called (from a separate thread) for each audio block."""
-            print('.')
             if status:
                 print(status, file=sys.stderr)
             self.q.put(indata.copy())
 
         try:
+            self.current_filename = filename
+            self.is_recording = True
             # Make sure the file is opened before recording anything:
             with sf.SoundFile(filename, mode='x', samplerate=self.sample_rate, channels=1, subtype=self.sub_type) as file:
                 with sd.InputStream(callback=callback):
@@ -46,26 +58,37 @@ class SoundMachine:
             print('\nRecording finished: ' + repr(filename))
         except Exception as e:
             exit(type(e).__name__ + ': ' + str(e))
+        finally:
+            self.is_recording = False
 
     def stop(self):
-        self.stop_recording = True
+        if self.isRecording():
+            self.stop_recording = True
+        elif self.isPlaying():
+            try:
+                sd.stop()
+            except Exception as e:
+                # not interested if this raised an exception
+                pass
 
     def play(self, filename):
         try:
+            self.current_filename = filename
+            self.is_playing = True
             data, fs = sf.read(filename, dtype='float32')
             sd.play(data)
             status = sd.wait()
         except Exception as e:
             exit(type(e).__name__ + ': ' + str(e))
+        finally:
+            self.is_playing = False
 
         if status:
             exit('Error during playback: ' + str(status))
 
-    def save(self):
-        pass
-
 
 class ViewModel:
+
     # Configuration Item Candidates
     record_id_prefix = "RR001"
     record_id_separator = "-"
@@ -75,7 +98,7 @@ class ViewModel:
     data_dir = "data"
 
     def __init__(self):
-        self.ready = False
+        self.is_ready = False
         self.selected_sentence = "unknown"
         self.sentences = None
         self.max_index = 0
@@ -87,7 +110,7 @@ class ViewModel:
         self.ensureDir(self.data_dir_structure)
 
     def reset(self):
-        self.ready = False
+        self.is_ready = False
         self.selected_sentence = "unknown"
         self.sentences = None
         self.max_index = 0
@@ -100,14 +123,17 @@ class ViewModel:
         if not os.path.exists(dir_name):
             os.makedirs(dir_name, exist_ok=True)
 
+    def IsReady(self):
+        return self.is_ready
+
     def previous(self):
-        if not self.ready:
+        if not self.is_ready:
             return
         if self.current_sentence_index > 0:
             self.current_sentence_index = self.current_sentence_index - 1
 
     def next(self):
-        if self.ready:
+        if self.is_ready:
             if self.current_sentence_index < self.max_index:
                 self.current_sentence_index = self.current_sentence_index + 1
 
@@ -117,10 +143,10 @@ class ViewModel:
         self.sentences = pd.read_csv(self.sentence_filename, sep='|', header=None)
         self.sentences.columns = ['key', 'spoken', 'normalised']
         self.max_index = len(self.sentences) - 1
-        self.ready = True
+        self.is_ready = True
 
     def getCurrentSentence(self):
-        if self.ready:
+        if self.is_ready:
             sentence = self.sentences['spoken'][self.current_sentence_index]
             self.selected_sentence = sentence
             return {'text': sentence, 'id': self.current_sentence_index}
@@ -183,7 +209,11 @@ class AppFrame(wx.Frame):
 
         # and a status bar
         self.CreateStatusBar()
-        self.SetStatusText("(c) 2020 Reece Robinson (Reece@TheRobinsons.gen.nz)")
+
+        # Timer events to maintain the status bar text
+        self.timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self.updateStatus, self.timer)
+        self.timer.Start(500)
 
     def makeMenuBar(self):
         """
@@ -222,9 +252,23 @@ class AppFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self.openFile, openItem)
         return menuBar
 
+    def updateStatus(self, event):
+        if not self.view_model.IsReady():
+            self.SetStatusText("(c) 2020 Reece Robinson (Reece@TheRobinsons.gen.nz)")
+        elif self.sound_machine.isPlaying():
+            self.SetStatusText("Playing: {0}".format(self.sound_machine.current_filename))
+        elif self.sound_machine.isRecording():
+            self.SetStatusText("Recording: {0}".format(self.sound_machine.current_filename))
+        elif self.sound_machine.isReady():
+            self.SetStatusText("Ready.")
+        else:
+            self.SetStatusText("")
+
     def playButton(self, event):
         rec_filename = "{0}.wav".format(self.view_model.getRecordingFilename())
-        self.sound_machine.play(rec_filename)
+        self.SetStatusText("Playing: {0}".format(rec_filename))
+        x = threading.Thread(target=self.sound_machine.play, args=(rec_filename, ))
+        x.start()
 
     def stopButton(self, event):
         self.sound_machine.stop()
@@ -240,7 +284,7 @@ class AppFrame(wx.Frame):
         filename = wx.FileSelector("Choose a sentence file to open", wildcard="*.csv")
         self.view_model.loadSentenceFile(filename)
         self.displayCurrentSentence()
-        self.SetStatusText("Loaded {0}".format(filename))
+        # self.SetStatusText("Loaded {0}".format(filename))
 
     def displayCurrentSentence(self):
         sentence = self.view_model.getCurrentSentence()
