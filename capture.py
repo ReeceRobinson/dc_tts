@@ -41,7 +41,7 @@ class SoundMachine:
             """This is called (from a separate thread) for each audio block."""
             if status:
                 print(status, file=sys.stderr)
-            self.q.put(indata.copy())
+            self.q.put(indata.copy())  # We only want mono data
 
         try:
             self.current_filename = filename
@@ -50,7 +50,8 @@ class SoundMachine:
             with sf.SoundFile(filename, mode='x', samplerate=self.sample_rate, channels=1, subtype=self.sub_type) as file:
                 with sd.InputStream(callback=callback):
                     while not self.stop_recording:
-                        file.write(self.q.get())
+                        d = self.q.get()[:, 1]
+                        file.write(d)
 
                     sd.stop(True)
                     self.reset()
@@ -155,7 +156,7 @@ class ViewModel:
         index_format = '{2:0' + str(self.record_id_num_pad) + '}'
         name_format = '{0}{1}' + index_format
         name = name_format.format(self.record_id_prefix, self.record_id_separator, self.current_sentence_index)
-        return os.path.join(self.data_dir_structure,name)
+        return os.path.join(self.data_dir_structure, name)
 
 
 class AppFrame(wx.Frame):
