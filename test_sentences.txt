@@ -1,3 +1,5 @@
 Nothing to see here
 1. Machine learning is a new expanding field of enquiry.
-2. Going on holiday is fun.
+2. This voice is something I trained while on holiday.
+3. This is a computer generated voice model of me. Now I can say anything you type!
+4. It is amazing that this actually sounds like me!

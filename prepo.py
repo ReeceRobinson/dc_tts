@@ -18,6 +18,7 @@ fpaths, _, _ = load_data() # list
 
 for fpath in tqdm.tqdm(fpaths):
     fname, mel, mag = load_spectrograms(fpath)
+
     if not os.path.exists("mels"): os.mkdir("mels")
     if not os.path.exists("mags"): os.mkdir("mags")
 
